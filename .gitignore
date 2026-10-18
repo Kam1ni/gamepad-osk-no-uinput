@@ -7,3 +7,4 @@ __pycache__/
 gamepad_osk-poc/
 gamepad-osk-no-uinput-poc/
 not a tty
+vendor/

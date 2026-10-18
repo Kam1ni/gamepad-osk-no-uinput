@@ -1,17 +1,16 @@
 package main //nolint:revive // main package needs no doc comment
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"runtime"
 	"sort"
 	"strconv"
-	"sync"
 	"time"
 )
 
 var themeOrder []string
-var isWayland bool
 
 func init() {
 	for name := range Themes {
@@ -21,42 +20,32 @@ func init() {
 }
 
 type App struct {
-	config        Config
-	running       bool
-	visible       bool
-	daemon        bool
-	togglePending bool
-	lock          sync.Mutex
-	themeIdx      int
-	posTop        bool // true = keyboard at top of screen
-	window        *Window
-	mon           MonitorRect // raw monitor bounds
-	winH          int32
-	winX          int32 // stored for re-apply after show
-	winY          int32
-	margin        int32
+	config   Config
+	running  bool
+	themeIdx int
+	posTop   bool // true = keyboard at top of screen
+	window   *Window
+	mon      MonitorRect // raw monitor bounds
+	winH     int32
+	winX     int32 // stored for re-apply after show
+	winY     int32
+	margin   int32
+	width    int32
+	height   int32
 
 	// Key repeat state
 	repeatAction  ActionType // action to repeat (ActionNone = inactive)
 	repeatStart   time.Time  // when key was first pressed
 	repeatLast    time.Time  // when last repeat fired
 	repeatInitial bool       // true = still in initial delay phase
-
-	reconnectLast time.Time // cooldown for gamepad reconnection attempts
-
-	// Deferred grab: when the OSK becomes visible we wait for any held
-	// trigger buttons to release before calling EVIOCGRAB, so other readers
-	// of the device (evsieve hooks, gamepad mappers) see the release events
-	// and don't end up with stuck per-button state. Bounded by a 500 ms
-	// fallback so a user who never releases the combo still gets a grab.
-	grabPending      bool
-	grabPendingUntil time.Time
+	kb            *KeyboardState
+	rend          *Renderer
+	inj           *Injector
 }
 
 func NewApp(config Config) *App {
 	return &App{
-		config:  config,
-		visible: true,
+		config: config,
 	}
 }
 
@@ -74,7 +63,7 @@ func (app *App) Run() error {
 	KeyGlyphs = BuildKeyGlyphs(cfg.Gamepad)
 
 	// Prefer native Wayland over XWayland when running in a Wayland session
-	if os.Getenv("WAYLAND_DISPLAY") != "" && os.Getenv("SDL_VIDEODRIVER") == "" {
+	if os.Getenv("SDL_VIDEODRIVER") == "" {
 		if err := os.Setenv("SDL_VIDEODRIVER", "wayland"); err != nil {
 			log.Printf("Warning: cannot set SDL_VIDEODRIVER: %v", err)
 		}
@@ -98,9 +87,9 @@ func (app *App) Run() error {
 	unit := CalcUnitSize(layout, mon.W, cfg)
 	pad := int32(cfg.Keys.Padding) //nolint:gosec // G115: padding fits in int32
 	statusH := max32(20, int32(float64(unit)*0.4))
-	width, height := CalcWindowSize(layout, unit, pad, statusH)
+	app.width, app.height = CalcWindowSize(layout, unit, pad, statusH)
 	Debugf("Monitor: %dx%d+%d+%d, scale=%d%%, unit=%d, window=%dx%d",
-		mon.W, mon.H, mon.X, mon.Y, cfg.Keys.Scale, unit, width, height)
+		mon.W, mon.H, mon.X, mon.Y, cfg.Keys.Scale, unit, app.width, app.height)
 
 	// Set Wayland app_id so compositor rules can target this window
 	SDL3SetHint("SDL_APP_ID", "gamepad-osk-no-uinput")
@@ -108,12 +97,11 @@ func (app *App) Run() error {
 		log.Printf("Warning: cannot set SDL_APP_ID: %v", err)
 	}
 
-	isWayland = os.Getenv("WAYLAND_DISPLAY") != ""
 	var window *Window
 	var err error
 	// Wayland: create roleless surface, attach layer-shell asynchronously
 	setTargetMonitor(mon.X, mon.Y)
-	window, err = createWaylandWindow("gamepad-osk-no-uinput", width, height)
+	window, err = createWaylandWindow("gamepad-osk-no-uinput", app.width, app.height)
 	if err != nil {
 		return err
 	}
@@ -124,9 +112,7 @@ func (app *App) Run() error {
 
 	// Attach layer-shell asynchronously -- configure arrives via SDL event pump.
 	// Skip in daemon mode (starts hidden, first toggle-show will attach).
-	if isWayland && app.visible {
-		attachLayerShellAsync(window, width, height, app.posTop, 0, cfg.Window.PanelAvoid)
-	}
+	attachLayerShellAsync(window, app.width, app.height, app.posTop, 0, cfg.Window.PanelAvoid)
 
 	renderer, err := SDL3CreateRenderer(window)
 	if err != nil {
@@ -142,45 +128,34 @@ func (app *App) Run() error {
 		SDL3SetWindowOpacity(window, float32(cfg.Window.Opacity))
 	}
 
-	rend, err := NewRenderer(renderer, theme, unit, pad)
+	app.rend, err = NewRenderer(renderer, theme, unit, pad)
 	if err != nil {
 		return err
 	}
-	defer rend.Destroy()
+	defer app.rend.Destroy()
 
-	inj, err := NewInjector()
+	app.inj, err = NewInjector()
 	if err != nil {
 		log.Print(colorRed("Warning: key injection disabled - " + err.Error()))
 		logPermissionFix()
 		log.Printf("The on-screen keyboard will display but cannot send keystrokes.")
 	}
 	defer func() {
-		if inj != nil {
-			inj.Close()
+		if app.inj != nil {
+			app.inj.Close()
 		}
 	}()
 
 	gamepad := NewGamepadReader(cfg)
-	if !gamepad.Open("") {
-		log.Printf("Warning: no gamepad found")
-		log.Printf("Usage: gamepad-osk-no-uinput --device /dev/input/gamepad0")
-	}
 	defer gamepad.Close()
-	if cfg.Gamepad.Grab && app.visible {
-		app.grabPending = true
-		app.grabPendingUntil = time.Now().Add(500 * time.Millisecond)
-	}
-
 	// Rebuild glyphs after gamepad open (swap_xy may have been auto-detected)
 	KeyGlyphs = BuildKeyGlyphs(gamepad.config.Gamepad)
 
 	// Init IPC
 	ipc := NewIPCServer(func(cmd string) {
 		switch cmd {
-		case "toggle":
-			app.lock.Lock()
-			app.togglePending = true
-			app.lock.Unlock()
+		case "close":
+			// Todo: close running instance
 		case "ping":
 			// Instance check - connection success is the answer
 		}
@@ -190,7 +165,7 @@ func (app *App) Run() error {
 	}
 	defer ipc.Stop()
 
-	kb := NewKeyboardState(layout)
+	app.kb = NewKeyboardState(layout)
 
 	// Find current theme index for cycling
 	for i, name := range themeOrder {
@@ -199,76 +174,34 @@ func (app *App) Run() error {
 			break
 		}
 	}
-	kb.OnThemeCycle = func() {
+	app.kb.OnThemeCycle = func() {
 		app.themeIdx = (app.themeIdx + 1) % len(themeOrder)
 		name := themeOrder[app.themeIdx]
-		rend.SetTheme(Themes[name])
+		app.rend.SetTheme(Themes[name])
 		SaveTheme(name)
 	}
-	kb.OnThemeCycleReverse = func() {
+	app.kb.OnThemeCycleReverse = func() {
 		app.themeIdx = (app.themeIdx - 1 + len(themeOrder)) % len(themeOrder)
 		name := themeOrder[app.themeIdx]
-		rend.SetTheme(Themes[name])
+		app.rend.SetTheme(Themes[name])
 		SaveTheme(name)
 	}
-	kb.OnSensitivityUp = func() {
+	app.kb.OnSensitivityUp = func() {
 		cfg.Mouse.Sensitivity = min(50, cfg.Mouse.Sensitivity+2)
 		gamepad.SetSensitivity(cfg.Mouse.Sensitivity)
-		rend.FlashGlyph("\u27F9", strconv.Itoa(cfg.Mouse.Sensitivity))
+		app.rend.FlashGlyph("\u27F9", strconv.Itoa(cfg.Mouse.Sensitivity))
 		SaveSensitivity(cfg.Mouse.Sensitivity)
 	}
-	kb.OnSensitivityDown = func() {
+	app.kb.OnSensitivityDown = func() {
 		cfg.Mouse.Sensitivity = max(1, cfg.Mouse.Sensitivity-2)
 		gamepad.SetSensitivity(cfg.Mouse.Sensitivity)
-		rend.FlashGlyph("\u27FE", strconv.Itoa(cfg.Mouse.Sensitivity))
+		app.rend.FlashGlyph("\u27FE", strconv.Itoa(cfg.Mouse.Sensitivity))
 		SaveSensitivity(cfg.Mouse.Sensitivity)
 	}
 
 	app.running = true
 
-	opacity := float32(cfg.Window.Opacity)
-
 	for app.running {
-		// Handle toggle
-		app.lock.Lock()
-		if app.togglePending {
-			app.togglePending = false
-			app.visible = !app.visible
-			if app.visible {
-				if cfg.Gamepad.Grab {
-					app.grabPending = true
-					app.grabPendingUntil = time.Now().Add(500 * time.Millisecond)
-				}
-				attachLayerShellAsync(window, width, height, app.posTop, 0, cfg.Window.PanelAvoid)
-				rend.MarkDirty()
-				if opacity < 1.0 {
-					SDL3SetWindowOpacity(window, opacity) // re-apply after show
-				}
-			} else {
-				app.stopRepeat()
-				kb.CapsActive = false
-				kb.ShiftActive = false
-				kb.ShiftHeld = false
-				kb.CtrlActive = false
-				kb.AltActive = false
-				kb.MetaActive = false
-				kb.ReleaseAltTab(inj)
-				if inj != nil {
-					inj.ReleaseKey(KEY_LEFTSHIFT)
-					inj.ReleaseKey(KEY_LEFTCTRL)
-					inj.ReleaseKey(KEY_LEFTALT)
-					inj.ReleaseKey(KEY_LEFTMETA)
-					inj.ClickMouse(0x110, false) // BTN_LEFT release
-					inj.ClickMouse(0x111, false) // BTN_RIGHT release
-				}
-				// Cancel any pending grab so it can't fire after hide.
-				app.grabPending = false
-				gamepad.Ungrab()
-				destroyLayerSurface()
-			}
-		}
-		app.lock.Unlock()
-
 		// Process SDL3 window events
 		for evType, ok := SDL3PollEvent(); ok; evType, ok = SDL3PollEvent() {
 			if evType == SDL_EVENT_QUIT {
@@ -277,48 +210,18 @@ func (app *App) Run() error {
 		}
 
 		// Process gamepad events (evdev - works regardless of window focus)
-		prevFd := gamepad.Fd()
 		for _, action := range gamepad.ReadEvents() {
-			app.handleAction(action, kb, inj, rend)
-		}
-		if prevFd >= 0 && gamepad.Fd() < 0 {
-			rend.Flash("Controller lost")
-		}
-
-		// Deferred grab: defer EVIOCGRAB until trigger combo is released so
-		// other readers (evsieve hooks, gamepad mappers) see the release events
-		// and don't end up with stuck per-button state. Mirrors evsieve's
-		// own grab=auto idiom. Falls back to grabbing after grabPendingUntil
-		// so a user holding the combo indefinitely still gets a grab.
-		if app.grabPending {
-			if !gamepad.AnyButtonHeld() || time.Now().After(app.grabPendingUntil) {
-				app.grabPending = false
-				gamepad.Grab()
-			}
-		}
-
-		// Gamepad reconnection (2s cooldown between attempts)
-		if gamepad.Fd() < 0 {
-			now := time.Now()
-			if now.Sub(app.reconnectLast) >= 2*time.Second {
-				app.reconnectLast = now
-				if gamepad.Reconnect() {
-					rend.Flash("Controller connected")
-					if app.visible && cfg.Gamepad.Grab {
-						gamepad.Grab()
-					}
-				}
-			}
+			app.handleAction(action, app.kb)
 		}
 
 		// Long-press check
-		if kb.CheckLongPress(cfg.Gamepad.LongPressMs) {
-			rend.MarkDirty()
+		if app.kb.CheckLongPress(cfg.Gamepad.LongPressMs) {
+			app.rend.MarkDirty()
 		}
 
 		// Alt+Tab timeout (auto-release after 3s idle)
-		if kb.CheckAltTabTimeout(inj) {
-			rend.MarkDirty()
+		if app.kb.CheckAltTabTimeout(app.inj) {
+			app.rend.MarkDirty()
 		}
 
 		// Key repeat check
@@ -327,42 +230,33 @@ func (app *App) Run() error {
 			elapsed := now.Sub(app.repeatStart).Milliseconds()
 			if app.repeatInitial {
 				if elapsed >= int64(cfg.Keys.RepeatDelayMs) {
-					app.handleAction(Action{Type: app.repeatAction}, kb, inj, rend)
+					app.handleAction(Action{Type: app.repeatAction}, app.kb)
 					app.repeatLast = now
 					app.repeatInitial = false
 				}
 			} else if now.Sub(app.repeatLast).Milliseconds() >= int64(cfg.Keys.RepeatRateMs) {
-				app.handleAction(Action{Type: app.repeatAction}, kb, inj, rend)
+				app.handleAction(Action{Type: app.repeatAction}, app.kb)
 				app.repeatLast = now
 			}
 		}
 
-		// Check flash/key flash expiry to trigger final redraw
-		if app.visible {
-			if rend.flashText != "" && time.Now().After(rend.flashEnd) {
-				rend.MarkDirty()
-				rend.flashText = ""
-				rend.flashGlyphText = ""
-			}
-			if kb.FlashCode != 0 && time.Now().After(kb.FlashUntil) {
-				rend.MarkDirty()
-				kb.FlashCode = 0
-			}
+		if app.rend.flashText != "" && time.Now().After(app.rend.flashEnd) {
+			app.rend.MarkDirty()
+			app.rend.flashText = ""
+			app.rend.flashGlyphText = ""
+		}
+		if app.kb.FlashCode != 0 && time.Now().After(app.kb.FlashUntil) {
+			app.rend.MarkDirty()
+			app.kb.FlashCode = 0
 		}
 
-		// Render
-		if app.visible {
-			rend.Draw(kb)
-		}
+		app.rend.Draw(app.kb)
 
-		// Frame pacing: vsync in rend.Draw handles active rendering.
+		// Frame pacing: vsync in app.rend.Draw handles active rendering.
 		// Sleep when hidden, when visible but idle (nothing to draw), or
 		// when stick is active (sub-vsync polling for smooth cursor).
-		if !app.visible || rend.dirtyFrames <= 0 || gamepad.NeedsPolling() {
+		if app.rend.dirtyFrames <= 0 {
 			pollMs := 16 // hidden idle: ~60Hz for IPC + gamepad checks
-			if gamepad.NeedsPolling() {
-				pollMs = 4 // mouse/nav active: ~250Hz for smooth cursor
-			}
 			if app.repeatAction != ActionNone {
 				var nextMs int64
 				if app.repeatInitial {
@@ -382,20 +276,9 @@ func (app *App) Run() error {
 	return nil
 }
 
-func (app *App) handleAction(a Action, kb *KeyboardState, inj *Injector, rend *Renderer) {
-	// Toggle combo works even when hidden (it's the show/hide mechanism)
-	if a.Type == ActionToggle {
-		app.lock.Lock()
-		app.togglePending = true
-		app.lock.Unlock()
-		return
-	}
-
-	// Block all input when keyboard is hidden
-	if !app.visible {
-		return
-	}
-
+func (app *App) handleAction(a Action, kb *KeyboardState) {
+	inj := app.inj
+	rend := app.rend
 	rend.MarkDirty()
 
 	switch a.Type { //nolint:exhaustive // ActionNone is filtered by caller
@@ -493,17 +376,6 @@ func (app *App) handleAction(a Action, kb *KeyboardState, inj *Injector, rend *R
 			SDL3SetWindowPosition(app.window, app.winX, app.winY)
 		}
 		SavePosition(app.posTop)
-	case ActionClose:
-		if app.daemon {
-			// Daemon mode: close button hides instead of exiting
-			app.lock.Lock()
-			app.togglePending = true
-			app.lock.Unlock()
-			return
-		}
-		app.stopRepeat()
-		app.running = false
-		return
 	}
 }
 
@@ -519,4 +391,35 @@ func (app *App) startRepeat(action ActionType) {
 
 func (app *App) stopRepeat() {
 	app.repeatAction = ActionNone
+}
+
+func (app *App) show() {
+	fmt.Println("Showing")
+	attachLayerShellAsync(app.window, app.width, app.height, app.posTop, 0, app.config.Window.PanelAvoid)
+	app.rend.MarkDirty()
+	if app.config.Window.Opacity < 1.0 {
+		SDL3SetWindowOpacity(app.window, float32(app.config.Window.Opacity)) // re-apply after show
+	}
+}
+
+func (app *App) hide() {
+	fmt.Println("Hiding")
+	app.stopRepeat()
+	app.kb.CapsActive = false
+	app.kb.ShiftActive = false
+	app.kb.ShiftHeld = false
+	app.kb.CtrlActive = false
+	app.kb.AltActive = false
+	app.kb.MetaActive = false
+	app.kb.ReleaseAltTab(app.inj)
+	if app.inj != nil {
+		app.inj.ReleaseKey(KEY_LEFTSHIFT)
+		app.inj.ReleaseKey(KEY_LEFTCTRL)
+		app.inj.ReleaseKey(KEY_LEFTALT)
+		app.inj.ReleaseKey(KEY_LEFTMETA)
+		app.inj.ClickMouse(0x110, false) // BTN_LEFT release
+		app.inj.ClickMouse(0x111, false) // BTN_RIGHT release
+	}
+	destroyLayerSurface()
+
 }

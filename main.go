@@ -18,7 +18,6 @@ func main() {
 	args := os.Args[1:]
 
 	var devicePath, themeName, configPath string
-	daemon := false
 	setupMode := false
 	installMode := false
 
@@ -40,8 +39,6 @@ func main() {
 			setupMode = true
 		case "--install":
 			installMode = true
-		case "--daemon":
-			daemon = true
 		case "--verbose", "-v":
 			Verbose = true
 		case "--device", "-d":
@@ -120,10 +117,6 @@ func main() {
 	Debugf("No existing instance found")
 
 	app := NewApp(config)
-	if daemon {
-		app.daemon = true
-		app.visible = false
-	}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
@@ -132,6 +125,7 @@ func main() {
 		app.running = false
 	}()
 
+	fmt.Println("Running app")
 	if err := app.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
