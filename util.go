@@ -57,7 +57,7 @@ func logPermissionFix() {
 	} else {
 		log.Print(colorYellow("  Fix: sudo usermod -aG input $USER (then fully log out and back in)"))
 	}
-	log.Print(colorDim("  Tip: run 'gamepad-osk --setup' to diagnose and fix permission issues"))
+	log.Print(colorDim("  Tip: run 'gamepad-osk-no-uinput --setup' to diagnose and fix permission issues"))
 }
 
 // isUserInGroup checks if the current user is a member of the named group

@@ -1,41 +1,16 @@
 package main
 
 import (
-	"context"
+	_ "embed"
 	"fmt"
 	"io"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 )
 
-const (
-	udevRulePath = "/usr/lib/udev/rules.d/80-gamepad-osk.rules"
-	udevRuleAlt  = "/etc/udev/rules.d/80-gamepad-osk.rules"
-)
-
-// Hardcoded canonical content - reviewed and versioned in source control.
-// Kept in sync with gamepad-osk.udev but intentionally not go:embed'd
-// to prevent accidental deployment of corrupted rule files.
-const udevRuleContent = "# gamepad-osk: gamepad reading + virtual keyboard injection\n" +
-	"KERNEL==\"event*\", SUBSYSTEM==\"input\", GROUP=\"input\", MODE=\"0660\", TAG+=\"uaccess\"\n" +
-	"KERNEL==\"uinput\", SUBSYSTEM==\"misc\", OPTIONS+=\"static_node=uinput\", GROUP=\"input\", MODE=\"0660\", TAG+=\"uaccess\"\n"
-
-const systemdServiceTemplate = `[Unit]
-Description=gamepad-osk - Gamepad on-screen keyboard
-After=graphical-session.target
-
-[Service]
-Type=simple
-ExecStartPre=/bin/sleep 3
-ExecStart=%s --daemon
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=graphical-session.target
-`
+//go:embed gamepad-osk-no-uinput.service
+var systemdServiceTemplate string
 
 func hasSystemd() bool {
 	_, err := os.Stat("/run/systemd/system")
@@ -64,7 +39,7 @@ func runSetup(install bool) int {
 }
 
 func runDiagnose() int {
-	fmt.Printf("gamepad-osk v%s system check:\n", version)
+	fmt.Printf("gamepad-osk-no-uinput v%s system check:\n", version)
 	fmt.Println()
 
 	if os.Geteuid() == 0 {
@@ -76,24 +51,7 @@ func runDiagnose() int {
 	issues := 0
 	configIssues := 0
 
-	// Check device access first - udev rule status depends on this
-	uinputOK := false
-	switch f, err := os.OpenFile("/dev/uinput", os.O_RDWR, 0); { //nolint:gosec // G304: constant path
-	case err == nil:
-		_ = f.Close()
-		uinputOK = true
-		fmt.Printf("  %-14s %s writable\n", "/dev/uinput", colorGreen("[✓]"))
-	case os.IsPermission(err):
-		fmt.Printf("  %-14s %s permission denied\n", "/dev/uinput", colorRed("[✗]"))
-		issues++
-	case os.IsNotExist(err):
-		fmt.Printf("  %-14s %s not found (sudo modprobe uinput)\n", "/dev/uinput", colorRed("[✗]"))
-		issues++
-	default:
-		fmt.Printf("  %-14s %s %v\n", "/dev/uinput", colorRed("[✗]"), err)
-		issues++
-	}
-
+	// 1. input access
 	inputOK := false
 	matches, _ := filepath.Glob("/dev/input/event*")
 	if len(matches) == 0 {
@@ -114,46 +72,7 @@ func runDiagnose() int {
 		}
 	}
 
-	// udev rules - only flag as a problem if device access is also failing
-	udevFound := false
-	for _, path := range []string{udevRulePath, udevRuleAlt} {
-		if _, err := os.Stat(path); err == nil {
-			fmt.Printf("  %-14s %s %s\n", "udev rules", colorGreen("[✓]"), path)
-			udevFound = true
-			break
-		}
-	}
-	if !udevFound {
-		if uinputOK && inputOK {
-			fmt.Printf("  %-14s %s not installed (not needed - device access works)\n", "udev rules", colorDim("[~]"))
-		} else {
-			fmt.Printf("  %-14s %s not found\n", "udev rules", colorRed("[✗]"))
-			issues++
-		}
-	}
-
-	// 4. input group
-	inGroup, _ := isUserInGroup("input")
-	activeInSession := isGroupActiveInSession("input")
-	switch {
-	case inGroup && activeInSession:
-		fmt.Printf("  %-14s %s member and active in session\n", "input group", colorGreen("[✓]"))
-	case inGroup && !activeInSession:
-		fmt.Printf("  %-14s %s member in /etc/group but NOT active in session (need re-login)\n",
-			"input group", colorYellow("[!]"))
-	case !inGroup:
-		// Check if device access works anyway (logind ACLs)
-		if f, err := os.OpenFile("/dev/uinput", os.O_RDWR, 0); err == nil { //nolint:gosec // G304: constant path
-			_ = f.Close()
-			fmt.Printf("  %-14s %s not a member, but device access works (logind ACL)\n",
-				"input group", colorGreen("[✓]"))
-		} else {
-			fmt.Printf("  %-14s %s not a member\n", "input group", colorYellow("[!]"))
-			fmt.Printf("  %-14s   %s\n", "", colorYellow("Fix: sudo usermod -aG input $USER"))
-		}
-	}
-
-	// 5. config
+	// 2. config
 	userCfg := UserConfigPath()
 	if _, err := os.Stat(userCfg); err == nil {
 		// Suppress log output from config parsing (unknown section warnings etc.)
@@ -177,9 +96,9 @@ func runDiagnose() int {
 		fmt.Printf("  %-14s %s %s (will be created on first run)\n", "config", colorDim("[~]"), userCfg)
 	}
 
-	// 6. systemd service - check both system-wide and user-local paths
+	// 3. systemd service - check both system-wide and user-local paths
 	if hasSystemd() {
-		systemSvc := "/usr/lib/systemd/user/gamepad-osk.service"
+		systemSvc := "/usr/lib/systemd/user/gamepad-osk-no-uinput.service"
 		userSvc := systemdUserServicePath()
 		if _, err := os.Stat(systemSvc); err == nil {
 			fmt.Printf("  %-14s %s %s\n", "systemd", colorGreen("[✓]"), systemSvc)
@@ -195,7 +114,7 @@ func runDiagnose() int {
 	fmt.Println()
 	if issues > 0 {
 		if issues > configIssues {
-			fmt.Println(colorYellow("  Permission issues found. Run: sudo gamepad-osk --setup --install"))
+			fmt.Println(colorYellow("  Permission issues found. Run: sudo gamepad-osk-no-uinput --setup --install"))
 		}
 		if configIssues > 0 {
 			fmt.Println(colorYellow("  Config issues found. Edit the config file to fix, then re-run --setup to verify."))
@@ -207,40 +126,10 @@ func runDiagnose() int {
 }
 
 func runInstall() int {
-	fmt.Printf("gamepad-osk v%s setup:\n", version)
+	fmt.Printf("gamepad-osk-no-uinput v%s setup:\n", version)
 	fmt.Println()
 
-	// 1. udev rules
-	if canWritePath(udevRulePath) {
-		existed := false
-		if _, err := os.Stat(udevRulePath); err == nil {
-			existed = true
-		}
-		if err := os.WriteFile(udevRulePath, []byte(udevRuleContent), 0644); err != nil { //nolint:gosec // G306: udev rules are world-readable
-			fmt.Printf("  %-14s %s %v\n", "udev rules", colorRed("[✗]"), err)
-		} else if existed {
-			fmt.Printf("  %-14s %s %s (updated)\n", "udev rules", colorGreen("[✓]"), udevRulePath)
-		} else {
-			fmt.Printf("  %-14s %s %s\n", "udev rules", colorGreen("[✓]"), udevRulePath)
-		}
-
-		// Reload udev
-		ctx := context.Background()
-		if out, err := exec.CommandContext(ctx, "udevadm", "control", "--reload-rules").CombinedOutput(); err != nil {
-			fmt.Printf("  %-14s %s %s\n", "udev reload", colorRed("[✗]"), string(out))
-		} else {
-			fmt.Printf("  %-14s %s\n", "udev reload", colorGreen("[✓]"))
-		}
-		if out, err := exec.CommandContext(ctx, "udevadm", "trigger").CombinedOutput(); err != nil {
-			fmt.Printf("  %-14s %s %s\n", "udev trigger", colorRed("[✗]"), string(out))
-		} else {
-			fmt.Printf("  %-14s %s\n", "udev trigger", colorGreen("[✓]"))
-		}
-	} else {
-		fmt.Printf("  %-14s %s need root - run with sudo\n", "udev rules", colorDim("[~]"))
-	}
-
-	// 2. config
+	// 1. config
 	userCfg := UserConfigPath()
 	if _, err := os.Stat(userCfg); err == nil {
 		fmt.Printf("  %-14s %s %s (already exists)\n", "config", colorDim("[~]"), userCfg)
@@ -264,7 +153,7 @@ func runInstall() int {
 		}
 	}
 
-	// 3. systemd service
+	// 2. systemd service
 	// Root: /usr/lib/systemd/user/ (system-wide user unit, same as AUR PKGBUILD)
 	// Non-root: ~/.config/systemd/user/ (user-local)
 	if !hasSystemd() {
@@ -272,7 +161,7 @@ func runInstall() int {
 	} else {
 		var svcPath string
 		if os.Geteuid() == 0 {
-			svcPath = "/usr/lib/systemd/user/gamepad-osk.service"
+			svcPath = "/usr/lib/systemd/user/gamepad-osk-no-uinput.service"
 		} else {
 			svcPath = systemdUserServicePath()
 		}
@@ -280,7 +169,7 @@ func runInstall() int {
 		if err := os.MkdirAll(svcDir, 0755); err != nil { //nolint:gosec // G301: systemd user dir
 			fmt.Printf("  %-14s %s %v\n", "systemd", colorRed("[✗]"), err)
 		} else {
-			exePath := "/usr/bin/gamepad-osk"
+			exePath := "/usr/local/bin/gamepad-osk-no-uinput"
 			if exe, err := os.Executable(); err == nil {
 				exePath = exe
 			}
@@ -299,18 +188,6 @@ func runInstall() int {
 		}
 	}
 
-	// 4. group membership hint
-	if inGroup, _ := isUserInGroup("input"); !inGroup {
-		// Check if access works via ACL
-		if f, err := os.OpenFile("/dev/uinput", os.O_RDWR, 0); err != nil { //nolint:gosec // G304: constant path
-			fmt.Println()
-			fmt.Printf("  %s\n", colorYellow("Note: add yourself to the input group:"))
-			fmt.Printf("    sudo usermod -aG input $USER\n")
-		} else {
-			_ = f.Close()
-		}
-	}
-
 	fmt.Println()
 	fmt.Println(colorGreen("  Setup complete."))
 	return 0
@@ -323,5 +200,5 @@ func systemdUserServicePath() string {
 			home = u
 		}
 	}
-	return filepath.Join(home, ".config", "systemd", "user", "gamepad-osk.service")
+	return filepath.Join(home, ".config", "systemd", "user", "gamepad-osk-no-uinput.service")
 }

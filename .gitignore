@@ -1,6 +1,9 @@
 gamepad-osk
+gamepad-osk-no-uinput
 *.o
 *.a
 __pycache__/
 *.pyc
 gamepad_osk-poc/
+gamepad-osk-no-uinput-poc/
+not a tty

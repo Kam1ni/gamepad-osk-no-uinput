@@ -32,11 +32,11 @@ type ThemeConfig struct {
 }
 
 type WindowConfig struct {
-	Position     string  // "bottom" or "top"
+	Position     string // "bottom" or "top"
 	Margin       int
-	BottomMargin int     // deprecated, migrated to Margin
+	BottomMargin int // deprecated, migrated to Margin
 	Opacity      float64
-	PanelAvoid   bool    // Wayland: respect panel exclusive zones (false = always screen edge)
+	PanelAvoid   bool // Wayland: respect panel exclusive zones (false = always screen edge)
 }
 
 type KeysConfig struct {
@@ -90,12 +90,12 @@ func DefaultConfig() Config {
 			MouseStick:    "right",
 			ComboPeriodMs: 200,
 			Buttons: ButtonsConfig{
-				Press:      "a",
-				Close:      "b",
-				Backspace:  "x",
-				Space:      "y",
-				Shift:      "lt",
-				Enter:      "rt",
+				Press:          "a",
+				Close:          "b",
+				Backspace:      "x",
+				Space:          "y",
+				Shift:          "lt",
+				Enter:          "rt",
 				LeftClick:      "rb",
 				RightClick:     "lb",
 				PositionToggle: "start",
@@ -287,7 +287,7 @@ func writeINI(w io.Writer, cfg Config) error {
 	kvf := func(key string, val any) string { return fmt.Sprintf("%s = %v", key, val) }
 	line := func(s, comment string) string { return fmt.Sprintf("%-29s# %s\n", s, comment) }
 
-	b.WriteString("# gamepad-osk configuration\n\n")
+	b.WriteString("# gamepad-osk-no-uinput configuration\n\n")
 
 	b.WriteString("[theme]\n")
 	b.WriteString(line(kv("name", cfg.Theme.Name), "see --help for full list (60 themes)"))
@@ -312,7 +312,7 @@ func writeINI(w io.Writer, cfg Config) error {
 	b.WriteString("[gamepad]\n")
 	b.WriteString(line(kv("device", cfg.Gamepad.Device), "empty = auto-detect, or /dev/input/eventX"))
 	b.WriteString(line(kvf("grab", cfg.Gamepad.Grab), "grab device when visible (prevents input bleed to game)"))
-b.WriteString(line(kv("deadzone", strconv.FormatFloat(cfg.Gamepad.Deadzone, 'f', -1, 64)), "stick deadzone (0.0-1.0)"))
+	b.WriteString(line(kv("deadzone", strconv.FormatFloat(cfg.Gamepad.Deadzone, 'f', -1, 64)), "stick deadzone (0.0-1.0)"))
 	b.WriteString(line(kvf("long_press_ms", cfg.Gamepad.LongPressMs), "ms to hold for accent popup (100-5000)"))
 	b.WriteString(line(kv("swap_xy", cfg.Gamepad.SwapXY), "auto = detect xpad/xpadneo/xone drivers (default), true = force swap, false = off"))
 	b.WriteString(line(kv("mouse_stick", cfg.Gamepad.MouseStick), "left or right - nav uses the other stick"))
@@ -358,7 +358,7 @@ func migrateFromTOML(tomlPath, newPath string) error {
 
 	// Read TOML, strip quotes, write INI
 	var b strings.Builder
-	b.WriteString("# gamepad-osk configuration (migrated from config.toml)\n")
+	b.WriteString("# gamepad-osk-no-uinput configuration (migrated from config.toml)\n")
 	scanner := bufio.NewScanner(in)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -426,7 +426,7 @@ func UserConfigPath() string {
 		}
 		xdg = filepath.Join(sudoHomeResolved, ".config")
 	}
-	return filepath.Join(xdg, "gamepad-osk", "config")
+	return filepath.Join(xdg, "gamepad-osk-no-uinput", "config")
 }
 
 // legacyConfigPath returns the old TOML config path for migration.
@@ -443,7 +443,7 @@ func legacyConfigPath() string {
 		}
 		xdg = filepath.Join(sudoHomeResolved, ".config")
 	}
-	return filepath.Join(xdg, "gamepad-osk", "config.toml")
+	return filepath.Join(xdg, "gamepad-osk-no-uinput", "config.toml")
 }
 
 func LoadConfig(overridePath string) Config {
@@ -470,7 +470,7 @@ func LoadConfig(overridePath string) Config {
 	}
 	paths = append(paths,
 		userPath,
-		"/etc/gamepad-osk/config",
+		"/etc/gamepad-osk-no-uinput/config",
 	)
 	if exe, err := os.Executable(); err == nil {
 		paths = append(paths, filepath.Join(filepath.Dir(exe), "config"))

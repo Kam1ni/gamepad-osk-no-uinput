@@ -3,9 +3,9 @@ package main //nolint:revive // main package needs no doc comment
 import (
 	"log"
 	"os"
-	"strconv"
 	"runtime"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -27,21 +27,20 @@ type App struct {
 	daemon        bool
 	togglePending bool
 	lock          sync.Mutex
-	themeIdx int
-	posTop   bool // true = keyboard at top of screen
-	window   *Window
-	mon      MonitorRect // raw monitor bounds
-	posArea  MonitorRect // positioning area (workarea on X11, same as mon on Wayland)
-	winH     int32
-	winX     int32 // stored for re-apply after show
-	winY     int32
-	margin   int32
+	themeIdx      int
+	posTop        bool // true = keyboard at top of screen
+	window        *Window
+	mon           MonitorRect // raw monitor bounds
+	winH          int32
+	winX          int32 // stored for re-apply after show
+	winY          int32
+	margin        int32
 
 	// Key repeat state
-	repeatAction   ActionType // action to repeat (ActionNone = inactive)
-	repeatStart    time.Time  // when key was first pressed
-	repeatLast     time.Time  // when last repeat fired
-	repeatInitial  bool       // true = still in initial delay phase
+	repeatAction  ActionType // action to repeat (ActionNone = inactive)
+	repeatStart   time.Time  // when key was first pressed
+	repeatLast    time.Time  // when last repeat fired
+	repeatInitial bool       // true = still in initial delay phase
 
 	reconnectLast time.Time // cooldown for gamepad reconnection attempts
 
@@ -94,8 +93,6 @@ func (app *App) Run() error {
 	}
 	defer SDL3Quit()
 
-	initX11Detection()
-
 	// Get primary monitor
 	mon := GetPrimaryMonitor()
 	unit := CalcUnitSize(layout, mon.W, cfg)
@@ -105,94 +102,30 @@ func (app *App) Run() error {
 	Debugf("Monitor: %dx%d+%d+%d, scale=%d%%, unit=%d, window=%dx%d",
 		mon.W, mon.H, mon.X, mon.Y, cfg.Keys.Scale, unit, width, height)
 
-	// Use workarea on X11 to avoid panels/taskbars; fall back to monitor bounds.
-	// Workarea spans all monitors - intersect with primary to get per-monitor area.
-	posArea := mon
-	waOk := false
-	if wx, wy, ww, wh, ok := GetWorkarea(); ok && ww > 0 && wh > 0 {
-		waOk = true
-		wa := MonitorRect{X: wx, Y: wy, W: ww, H: wh}
-		posArea = intersectRect(mon, wa)
-		Debugf("Workarea: %dx%d+%d+%d, monitor: %dx%d+%d+%d, effective: %dx%d+%d+%d",
-			ww, wh, wx, wy, mon.W, mon.H, mon.X, mon.Y,
-			posArea.W, posArea.H, posArea.X, posArea.Y)
-	}
-	// Fallback: workarea available but didn't subtract panel for this monitor
-	// (multi-monitor XFCE reports combined workarea without per-monitor panel gaps).
-	// Scan _NET_WM_STRUT_PARTIAL on dock/panel windows directly.
-	if waOk && posArea == mon {
-		if top, bottom, left, right := GetStrutInsets(mon); top > 0 || bottom > 0 || left > 0 || right > 0 {
-			posArea = MonitorRect{
-				X: mon.X + left,
-				Y: mon.Y + top,
-				W: mon.W - left - right,
-				H: mon.H - top - bottom,
-			}
-			Debugf("Strut fallback: top=%d bottom=%d left=%d right=%d, effective: %dx%d+%d+%d",
-				top, bottom, left, right, posArea.W, posArea.H, posArea.X, posArea.Y)
-		}
-	}
-
-	// Position: center horizontally, top or bottom based on config
-	x := posArea.X + (posArea.W-width)/2
-	margin := int32(cfg.Window.Margin) //nolint:gosec // G115: margin fits in int32
-
-	SaveFocusedWindow()
-
 	// Set Wayland app_id so compositor rules can target this window
-	SDL3SetHint("SDL_APP_ID", "gamepad-osk")
-	if err := os.Setenv("SDL_APP_ID", "gamepad-osk"); err != nil {
+	SDL3SetHint("SDL_APP_ID", "gamepad-osk-no-uinput")
+	if err := os.Setenv("SDL_APP_ID", "gamepad-osk-no-uinput"); err != nil {
 		log.Printf("Warning: cannot set SDL_APP_ID: %v", err)
 	}
 
 	isWayland = os.Getenv("WAYLAND_DISPLAY") != ""
 	var window *Window
 	var err error
-	if isWayland {
-		// Wayland: create roleless surface, attach layer-shell asynchronously
-		setTargetMonitor(mon.X, mon.Y)
-		window, err = createWaylandWindow("gamepad-osk", width, height)
-		if err != nil {
-			return err
-		}
-	} else {
-		// X11: override-redirect handles z-ordering; SDL_WINDOW_ALWAYS_ON_TOP omitted.
-		// SDL3's X11 backend sends _NET_WM_STATE_ABOVE via XSendEvent to root when
-		// showing a window with that flag. xfwm4 processes it (even for override-redirect
-		// windows) and triggers fullscreen stack re-evaluation, causing xfce4-panel to
-		// re-appear. Override-redirect + XMapRaised (called by SDL ShowWindow) provides
-		// z-ordering without notifying the WM.
-		window, err = SDL3CreateWindow("gamepad-osk",
-			width, height,
-			SDL_WINDOW_HIDDEN|SDL_WINDOW_BORDERLESS)
-		if err != nil {
-			return err
-		}
-		// Position set after app fields are initialized (computeY needs them)
+	// Wayland: create roleless surface, attach layer-shell asynchronously
+	setTargetMonitor(mon.X, mon.Y)
+	window, err = createWaylandWindow("gamepad-osk-no-uinput", width, height)
+	if err != nil {
+		return err
 	}
 	defer func() {
 		cleanupLayerShell()
 		SDL3DestroyWindow(window)
 	}()
 
-	// Store for position toggling (must be set before computeY)
-	app.window = window
-	app.mon = mon
-	app.posArea = posArea
-	app.winH = height
-	app.winX = x
-	app.margin = margin
-	app.posTop = cfg.Window.Position == "top"
-	app.winY = app.computeY()
-
-	if !isWayland {
-		SDL3SetWindowPosition(window, x, app.winY)
-	}
-
 	// Attach layer-shell asynchronously -- configure arrives via SDL event pump.
 	// Skip in daemon mode (starts hidden, first toggle-show will attach).
 	if isWayland && app.visible {
-		attachLayerShellAsync(window, width, height, app.posTop, margin, cfg.Window.PanelAvoid)
+		attachLayerShellAsync(window, width, height, app.posTop, 0, cfg.Window.PanelAvoid)
 	}
 
 	renderer, err := SDL3CreateRenderer(window)
@@ -207,12 +140,6 @@ func (app *App) Run() error {
 	// Set opacity after renderer creation (SDL3 requires renderer to exist first)
 	if cfg.Window.Opacity < 1.0 {
 		SDL3SetWindowOpacity(window, float32(cfg.Window.Opacity))
-	}
-
-	// Set X11 hints AFTER renderer init (layer-shell handles this on Wayland)
-	if !hasLayerShell() {
-		SetNoFocusHints(window)
-		// No RestoreFocus here: window is hidden, SDL init does not steal X11 focus when a WM is present
 	}
 
 	rend, err := NewRenderer(renderer, theme, unit, pad)
@@ -236,7 +163,7 @@ func (app *App) Run() error {
 	gamepad := NewGamepadReader(cfg)
 	if !gamepad.Open("") {
 		log.Printf("Warning: no gamepad found")
-		log.Printf("Usage: gamepad-osk --device /dev/input/gamepad0")
+		log.Printf("Usage: gamepad-osk-no-uinput --device /dev/input/gamepad0")
 	}
 	defer gamepad.Close()
 	if cfg.Gamepad.Grab && app.visible {
@@ -301,20 +228,6 @@ func (app *App) Run() error {
 
 	opacity := float32(cfg.Window.Opacity)
 
-	// Show window after everything is initialized (avoids ghost frame)
-	if app.visible {
-		if !isWayland {
-			rend.Draw(kb) // render first frame before showing (Wayland: gated by IsLayerShellReady)
-			SDL3ShowWindow(window)
-			if opacity < 1.0 {
-				SDL3SetWindowOpacity(window, opacity) // re-apply after show
-			}
-			SDL3SetWindowPosition(window, x, app.winY)
-			SetNoFocusHints(window)
-		}
-		// Wayland: first frame renders after configure arrives via SDL event pump
-	}
-
 	for app.running {
 		// Handle toggle
 		app.lock.Lock()
@@ -326,24 +239,10 @@ func (app *App) Run() error {
 					app.grabPending = true
 					app.grabPendingUntil = time.Now().Add(500 * time.Millisecond)
 				}
-				if !hasLayerShell() {
-					SaveFocusedWindow() // capture game window now, used by RestoreFocus on hide
-				}
-				if isWayland {
-					attachLayerShellAsync(window, width, height, app.posTop, margin, cfg.Window.PanelAvoid)
-				} else {
-					SDL3ShowWindow(window)
-				}
+				attachLayerShellAsync(window, width, height, app.posTop, 0, cfg.Window.PanelAvoid)
 				rend.MarkDirty()
 				if opacity < 1.0 {
 					SDL3SetWindowOpacity(window, opacity) // re-apply after show
-				}
-				if !isWayland {
-					app.winY = app.computeY()
-					SDL3SetWindowPosition(window, app.winX, app.winY)
-					SetNoFocusHints(window)
-					// No RestoreFocus: XMapRaised does not steal focus; calling XSetInputFocus here
-					// changes _NET_ACTIVE_WINDOW to prev_focused (terminal), triggering xfce4-panel.
 				}
 			} else {
 				app.stopRepeat()
@@ -365,17 +264,7 @@ func (app *App) Run() error {
 				// Cancel any pending grab so it can't fire after hide.
 				app.grabPending = false
 				gamepad.Ungrab()
-				if isWayland {
-					destroyLayerSurface()
-				} else {
-					SDL3HideWindow(window)
-				}
-				if !isWayland {
-					if IsSavedWindowFullscreen() {
-						WarpPointerIfOutside()
-					}
-					RestoreFocus()
-				}
+				destroyLayerSurface()
 			}
 		}
 		app.lock.Unlock()
@@ -601,7 +490,6 @@ func (app *App) handleAction(a Action, kb *KeyboardState, inj *Injector, rend *R
 		if hasLayerShell() {
 			repositionLayerSurface(app.posTop, app.margin, app.window)
 		} else {
-			app.winY = app.computeY()
 			SDL3SetWindowPosition(app.window, app.winX, app.winY)
 		}
 		SavePosition(app.posTop)
@@ -617,20 +505,6 @@ func (app *App) handleAction(a Action, kb *KeyboardState, inj *Injector, rend *R
 		app.running = false
 		return
 	}
-}
-
-// computeY returns the window Y position based on current fullscreen state.
-// When a fullscreen window is active, uses raw monitor bounds (screen edge).
-// Otherwise uses workarea bounds (respects panels/taskbars).
-func (app *App) computeY() int32 {
-	area := app.posArea
-	if IsFullscreenActive() {
-		area = app.mon
-	}
-	if app.posTop {
-		return area.Y + app.margin
-	}
-	return area.Y + area.H - app.winH - app.margin
 }
 
 func (app *App) startRepeat(action ActionType) {

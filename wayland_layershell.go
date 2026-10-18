@@ -195,7 +195,7 @@ static int attach_layer_shell_async(SDL_Window *sdl_win, int width, int height,
     // Create layer surface on target output
     layer_surface = zwlr_layer_shell_v1_get_layer_surface(
         layer_shell, wl_surf, target_output,
-        ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, "gamepad-osk");
+        ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, "gamepad-osk-no-uinput");
     if (!layer_surface) return -2;
 
     zwlr_layer_surface_v1_add_listener(layer_surface, &layer_surface_listener, NULL);

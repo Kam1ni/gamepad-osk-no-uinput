@@ -1,11 +1,11 @@
 [Unit]
-Description=gamepad-osk - Gamepad on-screen keyboard
+Description=gamepad-osk-no-uinput - Gamepad on-screen keyboard
 After=graphical-session.target
 
 [Service]
 Type=simple
 ExecStartPre=/bin/sleep 3
-ExecStart=/usr/bin/gamepad-osk --daemon
+ExecStart=%s --daemon
 Restart=on-failure
 RestartSec=5
 

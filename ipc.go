@@ -13,18 +13,18 @@ import (
 
 func initSockPath() string {
 	if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
-		return filepath.Join(dir, "gamepad-osk.sock")
+		return filepath.Join(dir, "gamepad-osk-no-uinput.sock")
 	}
 	// Under sudo, XDG_RUNTIME_DIR is unset but the real user's dir exists
 	if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
 		if u, err := user.Lookup(sudoUser); err == nil {
 			dir := "/run/user/" + u.Uid
 			if info, err := os.Stat(dir); err == nil && info.IsDir() { //nolint:gosec // G703: trusted /run/user path from user.Lookup
-				return filepath.Join(dir, "gamepad-osk.sock")
+				return filepath.Join(dir, "gamepad-osk-no-uinput.sock")
 			}
 		}
 	}
-	return filepath.Join(os.TempDir(), fmt.Sprintf("gamepad-osk-%d.sock", os.Getuid()))
+	return filepath.Join(os.TempDir(), fmt.Sprintf("gamepad-osk-no-uinput-%d.sock", os.Getuid()))
 }
 
 var sockPath = initSockPath()

@@ -1,10 +1,11 @@
-# gamepad-osk
+# gamepad-osk-no-uinput
 
+Fork of github.com/0x90shell/gamepad-osk made adjusted to remove the dependency on uinput at the cost of only working in wayland.
 Gamepad-controlled on-screen keyboard for Linux. Designed for couch gaming, Sunshine/Moonlight streaming, and any setup where you need to type with a controller.
 
-No Steam dependency. Works on X11 and Wayland (key injection via uinput).
+No Steam dependency. Works Wayland.
 
-![gamepad-osk](assets/matrix-hero.png)
+![gamepad-osk-no-uinput](assets/matrix-hero.png)
 
 ## Table of Contents
 
@@ -17,12 +18,10 @@ No Steam dependency. Works on X11 and Wayland (key injection via uinput).
   - [From source](#from-source)
   - [Bazzite / Immutable Fedora](#bazzite--immutable-fedora)
   - [Promptfont](#promptfont)
-- [Permissions](#permissions)
 - [Systemd User Service](#systemd-user-service)
 - [Configuration](#configuration)
 - [Themes](#themes)
 - [Show & Hide](#show--hide)
-- [X11](#x11)
 - [Wayland](#wayland)
 - [License](#license)
 
@@ -43,7 +42,7 @@ No Steam dependency. Works on X11 and Wayland (key injection via uinput).
 - Always-on-top, no focus stealing (types into whatever app has focus)
 - Multi-monitor aware (positions on primary monitor)
 - Configurable: buttons, sticks, theme, scale, position, opacity, deadzone
-- IPC toggle via Unix socket (`gamepad-osk --toggle`) for evsieve/hotkey integration
+- IPC toggle via Unix socket (`gamepad-osk-no-uinput --toggle`) for evsieve/hotkey integration
 - Built-in configurable toggle combo (e.g. `guide+a`, `l3+r3`) for zero-dependency show/hide
 - Daemon mode for systemd user service (close button hides instead of exiting)
 - Single static binary, ~5MB
@@ -73,20 +72,20 @@ No Steam dependency. Works on X11 and Wayland (key injection via uinput).
 ## Usage
 
 ```
-gamepad-osk                          # start (auto-detect gamepad)
-gamepad-osk --device /dev/input/X    # use specific device
-gamepad-osk --theme synthwave        # start with theme
-gamepad-osk --config /path/to/config  # use specific config file
-gamepad-osk --toggle                 # toggle running instance
-gamepad-osk --daemon                 # start hidden, B hides instead of exiting
-gamepad-osk --help                   # show all options
+gamepad-osk-no-uinput                          # start (auto-detect gamepad)
+gamepad-osk-no-uinput --device /dev/input/X    # use specific device
+gamepad-osk-no-uinput --theme synthwave        # start with theme
+gamepad-osk-no-uinput --config /path/to/config  # use specific config file
+gamepad-osk-no-uinput --toggle                 # toggle running instance
+gamepad-osk-no-uinput --daemon                 # start hidden, B hides instead of exiting
+gamepad-osk-no-uinput --help                   # show all options
 ```
 
 ## Installation
 
-**Runtime dependencies:** SDL3, SDL3_ttf, wayland, libX11, [promptfont](https://codeberg.org/shinmera/promptfont)
+**Runtime dependencies:** SDL3, SDL3_ttf, wayland, [promptfont](https://codeberg.org/shinmera/promptfont)
 
-**Build dependencies:** Go, SDL3 (dev), SDL3_ttf (dev), libX11 (dev), wayland (dev), wayland-protocols (dev)
+**Build dependencies:** Go, SDL3 (dev), SDL3_ttf (dev), wayland (dev), wayland-protocols (dev)
 
 Package names vary by distro. Find yours below:
 
@@ -103,8 +102,8 @@ Package names vary by distro. Find yours below:
 The fastest way to install on Arch:
 
 ```bash
-yay -S gamepad-osk-bin   # pre-built binary from GitHub release
-yay -S gamepad-osk-git   # build from latest source
+yay -S gamepad-osk-no-uinput-bin   # pre-built binary from GitHub release
+yay -S gamepad-osk-no-uinput-git   # build from latest source
 ```
 
 AUR packages install all dependencies, the systemd service, udev rules, and promptfont automatically.
@@ -117,32 +116,32 @@ yay --devel --save
 
 ### Pre-built binary (x86_64)
 
-Download the binary and support files from the [releases page](https://github.com/0x90shell/gamepad-osk/releases). This is the fastest option for non-Arch distros.
+Download the binary and support files from the [releases page](https://github.com/0x90shell/gamepad-osk-no-uinput/releases). This is the fastest option for non-Arch distros.
 
 Install runtime dependencies for your distro first (see [Promptfont](#promptfont) and the dep commands in [From source](#from-source)), then:
 
 ```bash
-chmod +x gamepad-osk
-sudo install -Dm755 gamepad-osk /usr/bin/gamepad-osk
-sudo install -Dm644 gamepad-osk.service /usr/lib/systemd/user/gamepad-osk.service
-sudo install -Dm644 gamepad-osk.udev /usr/lib/udev/rules.d/80-gamepad-osk.rules
+chmod +x gamepad-osk-no-uinput
+sudo install -Dm755 gamepad-osk-no-uinput /usr/bin/gamepad-osk-no-uinput
+sudo install -Dm644 gamepad-osk-no-uinput.service /usr/lib/systemd/user/gamepad-osk-no-uinput.service
+sudo install -Dm644 gamepad-osk-no-uinput.udev /usr/lib/udev/rules.d/80-gamepad-osk-no-uinput.rules
 sudo udevadm control --reload-rules
 ```
 
-A default config is auto-copied to `~/.config/gamepad-osk/` on first run.
+A default config is auto-copied to `~/.config/gamepad-osk-no-uinput/` on first run.
 
 ### From source
 
 Clone and build:
 
 ```bash
-git clone https://github.com/0x90shell/gamepad-osk.git
-cd gamepad-osk
-go build -o gamepad-osk .
-sudo install -Dm755 gamepad-osk /usr/bin/gamepad-osk
-sudo install -Dm644 config.example /usr/share/gamepad-osk/config
-sudo install -Dm644 gamepad-osk.service /usr/lib/systemd/user/gamepad-osk.service
-sudo install -Dm644 gamepad-osk.udev /usr/lib/udev/rules.d/80-gamepad-osk.rules
+git clone https://github.com/0x90shell/gamepad-osk-no-uinput.git
+cd gamepad-osk-no-uinput
+go build -o gamepad-osk-no-uinput .
+sudo install -Dm755 gamepad-osk-no-uinput /usr/bin/gamepad-osk-no-uinput
+sudo install -Dm644 config.example /usr/share/gamepad-osk-no-uinput/config
+sudo install -Dm644 gamepad-osk-no-uinput.service /usr/lib/systemd/user/gamepad-osk-no-uinput.service
+sudo install -Dm644 gamepad-osk-no-uinput.udev /usr/lib/udev/rules.d/80-gamepad-osk-no-uinput.rules
 sudo udevadm control --reload-rules
 ```
 
@@ -151,27 +150,27 @@ Install build dependencies for your distro before building:
 **Arch:**
 
 ```bash
-sudo pacman -S go sdl3 sdl3_ttf libx11 wayland wlr-protocols
+sudo pacman -S go sdl3 sdl3_ttf wayland wlr-protocols
 yay -S ttf-promptfont
 ```
 
 **Fedora / Nobara:**
 
 ```bash
-sudo dnf install golang SDL3-devel SDL3_ttf-devel libX11-devel wayland-devel wayland-protocols-devel
+sudo dnf install golang SDL3-devel SDL3_ttf-devel wayland-devel wayland-protocols-devel
 ```
 
 **Debian 13+ / Ubuntu 25.04+:**
 
 ```bash
-sudo apt install golang-go libsdl3-dev libsdl3-ttf-dev libx11-dev libwayland-dev wayland-protocols
+sudo apt install golang-go libsdl3-dev libsdl3-ttf-dev libwayland-dev wayland-protocols
 ```
 
 SDL3 is not available on Ubuntu 24.04 or Debian 12. Use a newer release or build SDL3 from source.
 
 ### Bazzite / Immutable Fedora
 
-gamepad-osk needs raw access to `/dev/input` and `/dev/uinput` for gamepad reading and key injection. This rules out Flatpak. On immutable Fedora-based systems (Bazzite, Bluefin, Fedora Atomic), layer the runtime dependencies and reboot:
+gamepad-osk-no-uinput needs raw access to `/dev/input` and `/dev/uinput` for gamepad reading and key injection. This rules out Flatpak. On immutable Fedora-based systems (Bazzite, Bluefin, Fedora Atomic), layer the runtime dependencies and reboot:
 
 ```bash
 rpm-ostree install SDL3 SDL3_ttf
@@ -181,16 +180,16 @@ systemctl reboot
 The udev rule goes in `/etc` which is writable:
 
 ```bash
-sudo cp gamepad-osk.udev /etc/udev/rules.d/80-gamepad-osk.rules
+sudo cp gamepad-osk-no-uinput.udev /etc/udev/rules.d/80-gamepad-osk-no-uinput.rules
 sudo udevadm control --reload-rules
 ```
 
-**Option 1: Pre-built binary (recommended).** Download from the [releases page](https://github.com/0x90shell/gamepad-osk/releases) and copy to `~/.local/bin/`:
+**Option 1: Pre-built binary (recommended).** Download from the [releases page](https://github.com/0x90shell/gamepad-osk-no-uinput/releases) and copy to `~/.local/bin/`:
 
 ```bash
-chmod +x gamepad-osk
+chmod +x gamepad-osk-no-uinput
 mkdir -p ~/.local/bin
-cp gamepad-osk ~/.local/bin/
+cp gamepad-osk-no-uinput ~/.local/bin/
 ```
 
 **Option 2: Build in a distrobox.**
@@ -198,11 +197,11 @@ cp gamepad-osk ~/.local/bin/
 ```bash
 distrobox create --name build --image fedora:41
 distrobox enter build
-sudo dnf install golang SDL3-devel SDL3_ttf-devel libX11-devel wayland-devel wayland-protocols-devel
-git clone https://github.com/0x90shell/gamepad-osk.git
-cd gamepad-osk
-go build -o gamepad-osk .
-cp gamepad-osk ~/.local/bin/
+sudo dnf install golang SDL3-devel SDL3_ttf-devel wayland-devel wayland-protocols-devel
+git clone https://github.com/0x90shell/gamepad-osk-no-uinput.git
+cd gamepad-osk-no-uinput
+go build -o gamepad-osk-no-uinput .
+cp gamepad-osk-no-uinput ~/.local/bin/
 exit
 ```
 
@@ -229,46 +228,30 @@ fc-cache
 rm promptfont.zip
 ```
 
-## Permissions
-
-gamepad-osk reads directly from `/dev/input` for gamepad input and `/dev/uinput` for key injection. Your user must be in the `input` group:
-
-```bash
-sudo usermod -aG input $USER
-```
-
-Log out and back in for the group change to take effect. Verify with `groups`.
-
-If you must use sudo, pass your config explicitly to avoid loading root's config:
-
-```bash
-sudo gamepad-osk --config ~/.config/gamepad-osk/config
-```
-
 ## Systemd User Service
 
 AUR packages install the service file automatically. To enable:
 
 ```bash
-systemctl --user enable --now gamepad-osk
+systemctl --user enable --now gamepad-osk-no-uinput
 ```
 
 Toggle visibility (bind to evsieve or hotkey):
 
 ```bash
-gamepad-osk --toggle
+gamepad-osk-no-uinput --toggle
 ```
 
 ## Configuration
 
 Config is loaded from (first found):
 1. `--config` flag
-2. `~/.config/gamepad-osk/config`
-3. `/etc/gamepad-osk/config`
+2. `~/.config/gamepad-osk-no-uinput/config`
+3. `/etc/gamepad-osk-no-uinput/config`
 4. `config` next to binary
 5. `config` in working directory
 
-A default config is auto-copied to `~/.config/gamepad-osk/` on first run.
+A default config is auto-copied to `~/.config/gamepad-osk-no-uinput/` on first run.
 
 See `config.example` for all options including button remapping, toggle combo, mouse stick, theme, scale, opacity, and deadzone.
 
@@ -326,32 +309,22 @@ If you already use [evsieve](https://github.com/KarsMulder/evsieve) for gamepad 
 ```bash
 evsieve \
   --input /dev/input/gamepad0 \
-  --hook btn:select btn:start period=200 exec-shell="gamepad-osk --toggle"
+  --hook btn:select btn:start period=200 exec-shell="gamepad-osk-no-uinput --toggle"
 ```
 
-Run `gamepad-osk --daemon` in the background so `--toggle` has something to signal. When the OSK is hidden, both evsieve and the daemon read the device nonexclusively — games still see input. When shown, gamepad-osk takes an exclusive grab so typing doesn't leak into the game; press **B** to hide and release the grab.
+Run `gamepad-osk-no-uinput --daemon` in the background so `--toggle` has something to signal. When the OSK is hidden, both evsieve and the daemon read the device nonexclusively — games still see input. When shown, gamepad-osk-no-uinput takes an exclusive grab so typing doesn't leak into the game; press **B** to hide and release the grab.
 
-gamepad-osk defers its grab until any trigger buttons are released (or 500 ms, whichever comes first), so evsieve hook trackers see the release events for the launching combo and don't end up with stuck per-button state. Earlier versions could leave evsieve hotkeys (e.g., select-prefixed combos) misfiring after each OSK toggle; this is no longer the case. The built-in `toggle_combo` is still preferred when you don't already need evsieve, since it has zero dependencies.
+gamepad-osk-no-uinput defers its grab until any trigger buttons are released (or 500 ms, whichever comes first), so evsieve hook trackers see the release events for the launching combo and don't end up with stuck per-button state. Earlier versions could leave evsieve hotkeys (e.g., select-prefixed combos) misfiring after each OSK toggle; this is no longer the case. The built-in `toggle_combo` is still preferred when you don't already need evsieve, since it has zero dependencies.
 
 ### Coexistence with other gamepad readers
 
-When the OSK becomes visible, gamepad-osk waits until no buttons are physically held before calling `EVIOCGRAB`. This means: any other process reading the same evdev node (evsieve, antimicroX, Steam Input, custom scripts) will observe the release events for the buttons that triggered the OSK before gamepad-osk takes over the device. The deferral is bounded at 500 ms — if the user holds the trigger combo longer than that, gamepad-osk grabs anyway. This mirrors evsieve's own `grab=auto` startup discipline.
+When the OSK becomes visible, gamepad-osk-no-uinput waits until no buttons are physically held before calling `EVIOCGRAB`. This means: any other process reading the same evdev node (evsieve, antimicroX, Steam Input, custom scripts) will observe the release events for the buttons that triggered the OSK before gamepad-osk-no-uinput takes over the device. The deferral is bounded at 500 ms — if the user holds the trigger combo longer than that, gamepad-osk-no-uinput grabs anyway. This mirrors evsieve's own `grab=auto` startup discipline.
 
 ### Device Grab
 
 When `grab = true` (default), the gamepad is exclusively grabbed while the keyboard is visible. This prevents controller input from bleeding into the game while you're typing. The grab is released when the keyboard hides.
 
 Note: `EVIOCGRAB` is per-evdev-node. If a consumer of gamepad input (e.g., an emulator, ES-DE, Moonlight) reads from `/dev/input/jsX` (legacy joydev) or from a sibling `event*` node belonging to the same physical controller, it will not be affected by the grab on the primary node. If you observe input bleeding through despite `grab = true`, check what fds the consumer has open (`ls -la /proc/<pid>/fd/ | grep input`) and either disable joydev fallback in that consumer (e.g., `SDL_JOYSTICK_LINUX_CLASSIC=0`) or tighten the device path to a single specific event node.
-
-## X11
-
-Works on any EWMH-compliant window manager. The keyboard renders always-on-top without stealing focus from the active window.
-
-**Fullscreen games (Bottles/Wine):** Toggling the OSK will not cause fullscreen games to minimize. On X11, the keyboard detects fullscreen windows and positions at the screen edge (ignoring panel/taskbar offsets). On hide, the pointer is returned to the game window center to restore input focus. On Wayland, set `panel_avoid = false` in config to position at the screen edge regardless of panels.
-
-**Toggle combo tip:** Avoid using joystick clicks (L3/R3) in your toggle combo if they are mapped to mouse click or other actions. A combo like `guide+a` or `select+start` avoids conflicts. If the combo includes a button with an action, the first button pressed fires its action before the combo is detected.
-
-If the OSK appears behind the game window, run the game in windowed or borderless mode.
 
 ## Wayland
 

@@ -30,21 +30,6 @@ func TestGroupGID(t *testing.T) {
 	}
 }
 
-func TestUdevRuleContent_Valid(t *testing.T) {
-	if !strings.HasPrefix(udevRuleContent, "#") {
-		t.Error("udev rule content should start with a comment")
-	}
-	if !strings.Contains(udevRuleContent, "KERNEL==\"event*\"") {
-		t.Error("udev rule should contain event* rule")
-	}
-	if !strings.Contains(udevRuleContent, "KERNEL==\"uinput\"") {
-		t.Error("udev rule should contain uinput rule")
-	}
-	if !strings.Contains(udevRuleContent, "GROUP=\"input\"") {
-		t.Error("udev rule should set GROUP to input")
-	}
-}
-
 func TestSystemdServiceContent_Valid(t *testing.T) {
 	if !strings.Contains(systemdServiceTemplate, "[Unit]") {
 		t.Error("service template should contain [Unit]")

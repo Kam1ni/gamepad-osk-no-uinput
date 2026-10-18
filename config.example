@@ -1,4 +1,4 @@
-# gamepad-osk configuration
+# gamepad-osk-no-uinput configuration
 
 [theme]
 name = matrix                # see --help for full list (60 themes)

@@ -31,7 +31,7 @@ func main() {
 			}
 			fmt.Fprintln(os.Stderr, "No running instance, starting new...")
 		case "--version", "-V":
-			fmt.Printf("gamepad-osk v%s\n", version)
+			fmt.Printf("gamepad-osk-no-uinput v%s\n", version)
 			os.Exit(0)
 		case "--help", "-h":
 			printHelp(LoadConfig(""))
@@ -79,7 +79,7 @@ func main() {
 	// --install requires --setup
 	if installMode && !setupMode {
 		fmt.Fprintln(os.Stderr, "Error: --install requires --setup")
-		fmt.Fprintln(os.Stderr, "Usage: gamepad-osk --setup --install")
+		fmt.Fprintln(os.Stderr, "Usage: gamepad-osk-no-uinput --setup --install")
 		os.Exit(1)
 	}
 
@@ -113,7 +113,7 @@ func main() {
 	// Socket exists but we can't connect - may be owned by another user (sudo)
 	if socketOwnedByOther(sockPath) {
 		fmt.Fprintln(os.Stderr, "Error: another instance may be running (socket owned by different user)")
-		fmt.Fprintln(os.Stderr, "Stop it: sudo pkill -x gamepad-osk")
+		fmt.Fprintln(os.Stderr, "Stop it: sudo pkill -x gamepad-osk-no-uinput")
 		fmt.Fprintf(os.Stderr, "If already stopped: sudo rm %s\n", sockPath)
 		os.Exit(1)
 	}
@@ -182,10 +182,10 @@ func printHelp(cfg Config) {
 			"  Buttons: a, b, x, y, lb, rb, lt, rt, l3, r3, start, select, guide, up, down, left, right"
 	}
 
-	fmt.Printf(`gamepad-osk v%s - Gamepad-controlled on-screen keyboard for Linux
+	fmt.Printf(`gamepad-osk-no-uinput v%s - Gamepad-controlled on-screen keyboard for Linux
 
 USAGE
-  gamepad-osk [options] [/dev/input/device]
+  gamepad-osk-no-uinput [options] [/dev/input/device]
 
 OPTIONS
   --device, -d PATH    Input device (overrides config, overrides auto-detect)
@@ -231,8 +231,8 @@ THEMES
 
 CONFIG (first found)
   1. --config flag
-  2. ~/.config/gamepad-osk/config
-  3. /etc/gamepad-osk/config
+  2. ~/.config/gamepad-osk-no-uinput/config
+  3. /etc/gamepad-osk-no-uinput/config
   4. config next to binary
   5. config in working directory
 

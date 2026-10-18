@@ -1,3 +1,3 @@
-module github.com/0x90shell/gamepad-osk
+module github.com/Kam1ni/gamepad-osk-no-uinput
 
 go 1.26.1

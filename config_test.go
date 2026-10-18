@@ -40,10 +40,10 @@ func TestDefaultConfig(t *testing.T) {
 
 func TestValidateConfig(t *testing.T) {
 	tests := []struct {
-		name     string
-		modify   func(*Config)
-		checkFn  func(*Config) bool
-		desc     string
+		name    string
+		modify  func(*Config)
+		checkFn func(*Config) bool
+		desc    string
 	}{
 		{"deadzone too high", func(c *Config) { c.Gamepad.Deadzone = 2.0 },
 			func(c *Config) bool { return c.Gamepad.Deadzone == 0.25 }, "should reset to 0.25"},
@@ -353,7 +353,7 @@ func TestSaveConfigRoundTrip(t *testing.T) {
 
 	// Save a theme
 	SaveTheme("nord")
-	path := filepath.Join(tmpDir, "gamepad-osk", "config")
+	path := filepath.Join(tmpDir, "gamepad-osk-no-uinput", "config")
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("config file not created: %v", err)
 	}
@@ -543,7 +543,7 @@ func TestMigrateFromTOML(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 
 	// Write a TOML config (with quoted strings, like BurntSushi/toml produces)
-	tomlDir := filepath.Join(tmpDir, "gamepad-osk")
+	tomlDir := filepath.Join(tmpDir, "gamepad-osk-no-uinput")
 	if err := os.MkdirAll(tomlDir, 0755); err != nil { //nolint:gosec // G301: test dir
 		t.Fatal(err)
 	}
