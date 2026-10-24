@@ -24,11 +24,6 @@ func main() {
 	i := 0
 	for i < len(args) {
 		switch args[i] {
-		case "--toggle":
-			if IPCSend("toggle") {
-				os.Exit(0)
-			}
-			fmt.Fprintln(os.Stderr, "No running instance, starting new...")
 		case "--version", "-V":
 			fmt.Printf("gamepad-osk-no-uinput v%s\n", version)
 			os.Exit(0)
@@ -100,22 +95,6 @@ func main() {
 		config.Theme.Name = themeName
 	}
 
-	// Check for existing instance before starting
-	Debugf("Checking for existing instance...")
-	if IPCSend("ping") {
-		fmt.Fprintln(os.Stderr, "Error: another instance is already running")
-		fmt.Fprintln(os.Stderr, "Use --toggle to show/hide, or stop the other instance first")
-		os.Exit(1)
-	}
-	// Socket exists but we can't connect - may be owned by another user (sudo)
-	if socketOwnedByOther(sockPath) {
-		fmt.Fprintln(os.Stderr, "Error: another instance may be running (socket owned by different user)")
-		fmt.Fprintln(os.Stderr, "Stop it: sudo pkill -x gamepad-osk-no-uinput")
-		fmt.Fprintf(os.Stderr, "If already stopped: sudo rm %s\n", sockPath)
-		os.Exit(1)
-	}
-	Debugf("No existing instance found")
-
 	app := NewApp(config)
 
 	sigCh := make(chan os.Signal, 1)
@@ -185,9 +164,6 @@ OPTIONS
   --device, -d PATH    Input device (overrides config, overrides auto-detect)
   --theme, -t NAME     Color theme (overrides config)
   --config, -c PATH    Config file path (overrides search order)
-  --toggle             Toggle visibility of running instance (for evsieve/hotkey)
-  --daemon             Start hidden, wait for toggle combo or --toggle to show
-                       Close button (B) hides instead of exiting in daemon mode
   --setup              Check system configuration (udev, permissions, config)
   --setup --install    Deploy udev rules, config, and systemd service
   --verbose, -v        Verbose logging (gamepad events, key injection, config)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"math"
 	"os"
@@ -372,6 +373,7 @@ func (gp *GamepadReader) handleAxis(event controller.Event) Action {
 		// Check if this axis is mapped to an action (triggers)
 		if action, ok := gp.actionMap.AxisActions[event.Target]; ok {
 			active := event.Normalized > -0.4 // triggers: -1.0 (released) to 1.0 (full), fire at ~30%
+			fmt.Println(event.Target, gp.shiftAxis, active)
 			if event.Target == gp.shiftAxis {
 				// Shift is hold-based: on/off
 				if active != gp.ltActive {

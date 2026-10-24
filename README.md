@@ -18,7 +18,6 @@ No Steam dependency. Works Wayland.
   - [From source](#from-source)
   - [Bazzite / Immutable Fedora](#bazzite--immutable-fedora)
   - [Promptfont](#promptfont)
-- [Systemd User Service](#systemd-user-service)
 - [Configuration](#configuration)
 - [Themes](#themes)
 - [Show & Hide](#show--hide)
@@ -42,9 +41,6 @@ No Steam dependency. Works Wayland.
 - Always-on-top, no focus stealing (types into whatever app has focus)
 - Multi-monitor aware (positions on primary monitor)
 - Configurable: buttons, sticks, theme, scale, position, opacity, deadzone
-- IPC toggle via Unix socket (`gamepad-osk-no-uinput --toggle`) for evsieve/hotkey integration
-- Built-in configurable toggle combo (e.g. `guide+a`, `l3+r3`) for zero-dependency show/hide
-- Daemon mode for systemd user service (close button hides instead of exiting)
 - Single static binary, ~5MB
 
 ## Controls
@@ -76,7 +72,6 @@ gamepad-osk-no-uinput                          # start (auto-detect gamepad)
 gamepad-osk-no-uinput --device /dev/input/X    # use specific device
 gamepad-osk-no-uinput --theme synthwave        # start with theme
 gamepad-osk-no-uinput --config /path/to/config  # use specific config file
-gamepad-osk-no-uinput --toggle                 # toggle running instance
 gamepad-osk-no-uinput --daemon                 # start hidden, B hides instead of exiting
 gamepad-osk-no-uinput --help                   # show all options
 ```
@@ -106,7 +101,7 @@ yay -S gamepad-osk-no-uinput-bin   # pre-built binary from GitHub release
 yay -S gamepad-osk-no-uinput-git   # build from latest source
 ```
 
-AUR packages install all dependencies, the systemd service, udev rules, and promptfont automatically.
+AUR packages install all dependencies, and promptfont automatically.
 
 To auto-update `-git` packages when upstream changes, enable devel checking:
 
@@ -123,8 +118,6 @@ Install runtime dependencies for your distro first (see [Promptfont](#promptfont
 ```bash
 chmod +x gamepad-osk-no-uinput
 sudo install -Dm755 gamepad-osk-no-uinput /usr/bin/gamepad-osk-no-uinput
-sudo install -Dm644 gamepad-osk-no-uinput.service /usr/lib/systemd/user/gamepad-osk-no-uinput.service
-sudo install -Dm644 gamepad-osk-no-uinput.udev /usr/lib/udev/rules.d/80-gamepad-osk-no-uinput.rules
 sudo udevadm control --reload-rules
 ```
 
@@ -140,8 +133,6 @@ cd gamepad-osk-no-uinput
 go build -o gamepad-osk-no-uinput .
 sudo install -Dm755 gamepad-osk-no-uinput /usr/bin/gamepad-osk-no-uinput
 sudo install -Dm644 config.example /usr/share/gamepad-osk-no-uinput/config
-sudo install -Dm644 gamepad-osk-no-uinput.service /usr/lib/systemd/user/gamepad-osk-no-uinput.service
-sudo install -Dm644 gamepad-osk-no-uinput.udev /usr/lib/udev/rules.d/80-gamepad-osk-no-uinput.rules
 sudo udevadm control --reload-rules
 ```
 
@@ -228,20 +219,6 @@ fc-cache
 rm promptfont.zip
 ```
 
-## Systemd User Service
-
-AUR packages install the service file automatically. To enable:
-
-```bash
-systemctl --user enable --now gamepad-osk-no-uinput
-```
-
-Toggle visibility (bind to evsieve or hotkey):
-
-```bash
-gamepad-osk-no-uinput --toggle
-```
-
 ## Configuration
 
 Config is loaded from (first found):
@@ -253,7 +230,7 @@ Config is loaded from (first found):
 
 A default config is auto-copied to `~/.config/gamepad-osk-no-uinput/` on first run.
 
-See `config.example` for all options including button remapping, toggle combo, mouse stick, theme, scale, opacity, and deadzone.
+See `config.example` for all options including button remapping, mouse stick, theme, scale, opacity, and deadzone.
 
 ## Themes
 
@@ -286,35 +263,12 @@ See `config.example` for all options including button remapping, toggle combo, m
 
 ## Show & Hide
 
-### Toggle Combo (recommended)
-
-Set `toggle_combo` in config to show/hide the keyboard with a button combo, no external tools needed:
-
 ```ini
 [gamepad]
-toggle_combo = guide+a       # or l3+r3, select+start, etc.
 combo_period_ms = 200        # timing window (ms)
 ```
 
 Available buttons: `a`, `b`, `x`, `y`, `lb`, `rb`, `lt`, `rt`, `l3`, `r3`, `start`, `select`, `guide`, `dpad_up`, `dpad_down`, `dpad_left`, `dpad_right`. Requires 2-4 buttons.
-
-Works in both normal and daemon mode. Pair with `--daemon` to keep the OSK running as a service (B hides instead of exiting). The internal combo handler runs in the same process that performs the grab, so there is no event-state race with other readers — prefer this over evsieve hooks when it suffices.
-
-`--toggle` / evsieve works independently of this setting. Leave `toggle_combo` empty to rely on those methods alone (default).
-
-### Evsieve Integration
-
-If you already use [evsieve](https://github.com/KarsMulder/evsieve) for gamepad hotkeys, add a single hook to toggle the OSK alongside your existing combos:
-
-```bash
-evsieve \
-  --input /dev/input/gamepad0 \
-  --hook btn:select btn:start period=200 exec-shell="gamepad-osk-no-uinput --toggle"
-```
-
-Run `gamepad-osk-no-uinput --daemon` in the background so `--toggle` has something to signal. When the OSK is hidden, both evsieve and the daemon read the device nonexclusively — games still see input. When shown, gamepad-osk-no-uinput takes an exclusive grab so typing doesn't leak into the game; press **B** to hide and release the grab.
-
-gamepad-osk-no-uinput defers its grab until any trigger buttons are released (or 500 ms, whichever comes first), so evsieve hook trackers see the release events for the launching combo and don't end up with stuck per-button state. Earlier versions could leave evsieve hotkeys (e.g., select-prefixed combos) misfiring after each OSK toggle; this is no longer the case. The built-in `toggle_combo` is still preferred when you don't already need evsieve, since it has zero dependencies.
 
 ### Coexistence with other gamepad readers
 

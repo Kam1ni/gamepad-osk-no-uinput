@@ -53,6 +53,8 @@ func (app *App) Run() error {
 	// SDL/OpenGL requires all calls from the same OS thread.
 	// go-sdl2 did this internally in sdl.Init(); we must do it explicitly.
 	runtime.LockOSThread()
+	NewKbdManager()
+	defer kbdManager.Close()
 
 	cfg := app.config
 	ValidateConfig(&cfg)
@@ -150,20 +152,6 @@ func (app *App) Run() error {
 	defer gamepad.Close()
 	// Rebuild glyphs after gamepad open (swap_xy may have been auto-detected)
 	KeyGlyphs = BuildKeyGlyphs(gamepad.config.Gamepad)
-
-	// Init IPC
-	ipc := NewIPCServer(func(cmd string) {
-		switch cmd {
-		case "close":
-			// Todo: close running instance
-		case "ping":
-			// Instance check - connection success is the answer
-		}
-	})
-	if err := ipc.Start(); err != nil {
-		log.Printf("Warning: IPC server failed: %v", err)
-	}
-	defer ipc.Stop()
 
 	app.kb = NewKeyboardState(layout)
 

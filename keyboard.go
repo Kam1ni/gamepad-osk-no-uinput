@@ -120,7 +120,7 @@ func (kb *KeyboardState) PressCurrent(inj *Injector) {
 	if kb.AccentPopup != nil {
 		accent := kb.AccentPopup.Accents[kb.AccentPopup.Selected]
 		if inj != nil {
-			inj.TypeUnicode(accent.Codepoint)
+			inj.TypeUnicode(accent.Label)
 		}
 		kb.CloseAccentPopup()
 		return

@@ -9,9 +9,6 @@ import (
 	"path/filepath"
 )
 
-//go:embed gamepad-osk-no-uinput.service
-var systemdServiceTemplate string
-
 func hasSystemd() bool {
 	_, err := os.Stat("/run/systemd/system")
 	return err == nil
@@ -96,21 +93,6 @@ func runDiagnose() int {
 		fmt.Printf("  %-14s %s %s (will be created on first run)\n", "config", colorDim("[~]"), userCfg)
 	}
 
-	// 3. systemd service - check both system-wide and user-local paths
-	if hasSystemd() {
-		systemSvc := "/usr/lib/systemd/user/gamepad-osk-no-uinput.service"
-		userSvc := systemdUserServicePath()
-		if _, err := os.Stat(systemSvc); err == nil {
-			fmt.Printf("  %-14s %s %s\n", "systemd", colorGreen("[✓]"), systemSvc)
-		} else if _, err := os.Stat(userSvc); err == nil {
-			fmt.Printf("  %-14s %s %s\n", "systemd", colorGreen("[✓]"), userSvc)
-		} else {
-			fmt.Printf("  %-14s %s user service not installed (optional)\n", "systemd", colorDim("[~]"))
-		}
-	} else {
-		fmt.Printf("  %-14s %s not detected (skipped)\n", "systemd", colorDim("[~]"))
-	}
-
 	fmt.Println()
 	if issues > 0 {
 		if issues > configIssues {
@@ -153,52 +135,7 @@ func runInstall() int {
 		}
 	}
 
-	// 2. systemd service
-	// Root: /usr/lib/systemd/user/ (system-wide user unit, same as AUR PKGBUILD)
-	// Non-root: ~/.config/systemd/user/ (user-local)
-	if !hasSystemd() {
-		fmt.Printf("  %-14s %s not detected\n", "systemd", colorDim("[~]"))
-	} else {
-		var svcPath string
-		if os.Geteuid() == 0 {
-			svcPath = "/usr/lib/systemd/user/gamepad-osk-no-uinput.service"
-		} else {
-			svcPath = systemdUserServicePath()
-		}
-		svcDir := filepath.Dir(svcPath)
-		if err := os.MkdirAll(svcDir, 0755); err != nil { //nolint:gosec // G301: systemd user dir
-			fmt.Printf("  %-14s %s %v\n", "systemd", colorRed("[✗]"), err)
-		} else {
-			exePath := "/usr/local/bin/gamepad-osk-no-uinput"
-			if exe, err := os.Executable(); err == nil {
-				exePath = exe
-			}
-			content := fmt.Sprintf(systemdServiceTemplate, exePath)
-			existed := false
-			if _, statErr := os.Stat(svcPath); statErr == nil {
-				existed = true
-			}
-			if err := os.WriteFile(svcPath, []byte(content), 0644); err != nil { //nolint:gosec // G306: service file
-				fmt.Printf("  %-14s %s %v\n", "systemd", colorRed("[✗]"), err)
-			} else if existed {
-				fmt.Printf("  %-14s %s %s (updated)\n", "systemd", colorGreen("[✓]"), svcPath)
-			} else {
-				fmt.Printf("  %-14s %s %s\n", "systemd", colorGreen("[✓]"), svcPath)
-			}
-		}
-	}
-
 	fmt.Println()
 	fmt.Println(colorGreen("  Setup complete."))
 	return 0
-}
-
-func systemdUserServicePath() string {
-	home := os.Getenv("HOME")
-	if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
-		if u, err := os.UserHomeDir(); err == nil {
-			home = u
-		}
-	}
-	return filepath.Join(home, ".config", "systemd", "user", "gamepad-osk-no-uinput.service")
 }
